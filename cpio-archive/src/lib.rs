@@ -119,19 +119,25 @@ where
     fn finish(&mut self) -> CpioResult<()>;
 }
 
-pub type ChainedCpioReader<T> = dyn CpioReader<Chain<Cursor<Vec<u8>>, T>>;
-
+pub enum ChainedCpioReader<T: Read + Sized> {
+    Newc(NewcReader<Chain<Cursor<Vec<u8>>, T>>),
+    Odc(OdcReader<Chain<Cursor<Vec<u8>>, T>>),
+}
 /// Construct a new cpio archive reader.
 ///
 /// This will sniff the type of the cpio archive and return an appropriate
 /// instance.
-pub fn reader<T: 'static + Read + Sized>(mut reader: T) -> CpioResult<Box<ChainedCpioReader<T>>> {
+pub fn reader<T: 'static + Read + Sized>(mut reader: T) -> CpioResult<ChainedCpioReader<T>> {
     let mut magic = vec![0u8; 6];
     reader.read_exact(&mut magic)?;
 
     match magic.as_ref() {
-        crate::newc::MAGIC => Ok(Box::new(NewcReader::new(Cursor::new(magic).chain(reader)))),
-        crate::odc::MAGIC => Ok(Box::new(OdcReader::new(Cursor::new(magic).chain(reader)))),
+        crate::newc::MAGIC => Ok(ChainedCpioReader::Newc(NewcReader::new(
+            Cursor::new(magic).chain(reader),
+        ))),
+        crate::odc::MAGIC => Ok(ChainedCpioReader::Odc(OdcReader::new(
+            Cursor::new(magic).chain(reader),
+        ))),
         _ => Err(Error::BadMagic),
     }
 }
